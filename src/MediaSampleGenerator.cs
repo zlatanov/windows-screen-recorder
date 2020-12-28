@@ -28,12 +28,42 @@ namespace WindowsScreenRecorder
         {
             lock ( m_lock )
             {
-                Debug.Assert( !m_started );
+                Debug.Assert( m_state == State.Created );
 
                 m_startRequest = request;
                 m_startRequestCompletion = request.GetDeferral();
-                m_started = true;
+                m_state = State.Started;
                 m_session.StartCapture();
+            }
+        }
+
+        public void Stop()
+        {
+            lock ( m_lock )
+            {
+                if ( m_state != State.Started )
+                    return;
+
+                m_state = State.Stopped;
+                m_session.Dispose();
+                
+                if ( m_startRequest is not null )
+                {
+                    m_startRequest.SetActualStartPosition( TimeSpan.Zero );
+                    m_startRequestCompletion!.Complete();
+
+                    m_startRequest = null;
+                    m_startRequestCompletion = null;
+                }
+
+                if ( m_sampleRequest is not null )
+                {
+                    m_sampleRequest.Sample = null;
+                    m_sampleRequestCompletion!.Complete();
+
+                    m_sampleRequest = null;
+                    m_sampleRequestCompletion = null;
+                }
             }
         }
 
@@ -41,38 +71,16 @@ namespace WindowsScreenRecorder
         {
             lock ( m_lock )
             {
-                if ( m_disposed )
+                if ( m_state == State.Disposed )
                     return;
 
-                m_disposed = true;
+                m_state = State.Disposed;
                 m_item.Closed -= OnClosed;
 
+                m_currentFrame?.Dispose();
+                m_currentFrame = null;
+
                 m_framePool.Dispose();
-                m_session.Dispose();
-
-                if ( m_started )
-                {
-                    if ( m_startRequest is not null )
-                    {
-                        m_startRequest.SetActualStartPosition( TimeSpan.Zero );
-                        m_startRequestCompletion!.Complete();
-
-                        m_startRequest = null;
-                        m_startRequestCompletion = null;
-                    }
-
-                    if ( m_sampleRequest is not null )
-                    {
-                        m_sampleRequest.Sample = null;
-                        m_sampleRequestCompletion!.Complete();
-
-                        m_sampleRequest = null;
-                        m_sampleRequestCompletion = null;
-                    }
-
-                    m_currentFrame?.Dispose();
-                    m_currentFrame = null;
-                }
             }
         }
 
@@ -80,10 +88,13 @@ namespace WindowsScreenRecorder
         {
             lock ( m_lock )
             {
-                if ( m_disposed )
-                    return;
-
                 var frame = sender.TryGetNextFrame();
+
+                if ( m_state != State.Started )
+                {
+                    frame?.Dispose();
+                    return;
+                }
 
                 if ( m_startRequest is not null )
                 {
@@ -113,13 +124,13 @@ namespace WindowsScreenRecorder
             }
         }
 
-        private void OnClosed( GraphicsCaptureItem sender, object args ) => Dispose();
+        private void OnClosed( GraphicsCaptureItem sender, object args ) => Stop();
 
         public void Generate( MediaStreamSourceSampleRequest request )
         {
             lock ( m_lock )
             {
-                if ( m_disposed )
+                if ( m_state != State.Started )
                 {
                     request.Sample = null;
                     return;
@@ -144,8 +155,7 @@ namespace WindowsScreenRecorder
         }
 
         private readonly object m_lock = new object();
-        private bool m_disposed;
-        private bool m_started;
+        private State m_state = State.Created;
 
         private MediaStreamSourceStartingRequest? m_startRequest;
         private MediaStreamSourceStartingRequestDeferral? m_startRequestCompletion;
@@ -159,5 +169,13 @@ namespace WindowsScreenRecorder
         private readonly GraphicsCaptureItem m_item;
         private readonly GraphicsCaptureSession m_session;
         private readonly Direct3D11CaptureFramePool m_framePool;
+
+        enum State
+        {
+            Created,
+            Started,
+            Stopped,
+            Disposed
+        }
     }
 }

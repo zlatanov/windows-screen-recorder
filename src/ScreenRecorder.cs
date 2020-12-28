@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Diagnostics;
 using System.IO;
 using System.Runtime.ExceptionServices;
 using System.Threading;
-using System.Threading.Tasks;
-using Windows.Graphics.Capture;
+using Windows.Foundation;
 using Windows.Graphics.DirectX.Direct3D11;
 using Windows.Media.Core;
 using Windows.Media.MediaProperties;
@@ -21,34 +19,18 @@ namespace WindowsScreenRecorder
 
             try
             {
-                var captureItem = Monitor.CreateCaptureItem( options.MonitorDeviceName );
-                var width = captureItem.Size.Width;
-                var height = captureItem.Size.Height;
+                var recorder = new ScreenRecorder( device, options );
+                var prepareTranscode = recorder.Transcoder
+                    .PrepareMediaStreamSourceTranscodeAsync( recorder.Source, output.AsRandomAccessStream(), recorder.Profile );
 
-                var videoProperties = VideoEncodingProperties.CreateUncompressed( MediaEncodingSubtypes.Bgra8, (uint)width, (uint)height );
-                var videoDescriptor = new VideoStreamDescriptor( videoProperties );
-
-                var source = new MediaStreamSource( videoDescriptor )
-                {
-                    IsLive = true
-                };
-                var recorder = new ScreenRecorder( device, source, captureItem );
-                var transcoder = new MediaTranscoder
-                {
-                    HardwareAccelerationEnabled = options.HardwareAccelerationEnabled
-                };
-
-                var encodingProfile = MediaEncodingProfile.CreateMp4( options.Quality );
-                var prepareTranscodeOperation = transcoder.PrepareMediaStreamSourceTranscodeAsync( source, output.AsRandomAccessStream(), encodingProfile );
-
-                if ( prepareTranscodeOperation.Status == Windows.Foundation.AsyncStatus.Started )
+                if ( prepareTranscode.Status == AsyncStatus.Started )
                 {
                     using var waitHandle = new ManualResetEvent( false );
-                    prepareTranscodeOperation.Completed = ( _, __ ) => waitHandle.Set();
+                    prepareTranscode.Completed = ( _, __ ) => waitHandle.Set();
                     waitHandle.WaitOne();
                 }
 
-                prepareTranscodeOperation.GetResults().TranscodeAsync().Completed = ( progress, __ ) =>
+                prepareTranscode.GetResults().TranscodeAsync().Completed = ( progress, status ) =>
                 {
                     try
                     {
@@ -73,24 +55,44 @@ namespace WindowsScreenRecorder
             }
         }
 
-        private ScreenRecorder( IDirect3DDevice device, MediaStreamSource source, GraphicsCaptureItem captureItem )
+        private ScreenRecorder( IDirect3DDevice device, ScreenRecorderOptions options )
         {
+            var captureItem = Monitor.CreateCaptureItem( options.MonitorDeviceName );
+
             m_device = device;
             m_generator = new MediaSampleGenerator( device, captureItem );
 
-            source.Starting += OnStarting;
-            source.SampleRequested += OnSampleRequested;
+            var width = captureItem.Size.Width;
+            var height = captureItem.Size.Height;
+
+            var videoProperties = VideoEncodingProperties.CreateUncompressed( MediaEncodingSubtypes.Bgra8, (uint)width, (uint)height );
+
+            Profile = MediaEncodingProfile.CreateMp4( options.Quality );
+            Transcoder = new MediaTranscoder
+            {
+                HardwareAccelerationEnabled = options.HardwareAccelerationEnabled
+            };
+            Source = new MediaStreamSource( new VideoStreamDescriptor( videoProperties ) )
+            {
+                IsLive = true
+            };
+            Source.Starting += OnStarting;
+            Source.SampleRequested += OnSampleRequested;
         }
+
+        public MediaStreamSource Source { get; }
+
+        public MediaTranscoder Transcoder { get; }
+
+        public MediaEncodingProfile Profile { get; }
 
         public void Dispose()
         {
             if ( m_disposed )
                 return;
 
-            Debug.Assert( m_generator is not null );
-
             m_disposed = true;
-            m_generator.Dispose();
+            m_generator.Stop();
 
             try
             {
@@ -102,6 +104,7 @@ namespace WindowsScreenRecorder
             }
             finally
             {
+                m_generator.Dispose();
                 m_device.Dispose();
             }
         }
@@ -121,7 +124,6 @@ namespace WindowsScreenRecorder
 
         private bool m_disposed;
         private ExceptionDispatchInfo? m_exception;
-
         private readonly ManualResetEvent m_stopped = new ManualResetEvent( false );
     }
 }

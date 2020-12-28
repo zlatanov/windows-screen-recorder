@@ -12,10 +12,10 @@ namespace WindowsScreenRecorder
 
         public static IDirect3DDevice CreateDevice()
         {
-            var d3dDevice = new SharpDX.Direct3D11.Device(
+            using var d3dDevice = new SharpDX.Direct3D11.Device(
                 driverType: SharpDX.Direct3D.DriverType.Hardware,
                 flags: SharpDX.Direct3D11.DeviceCreationFlags.BgraSupport );
-
+            
             // Acquire the DXGI interface for the Direct3D device.
             using var dxgiDevice = d3dDevice.QueryInterface<SharpDX.DXGI.Device3>();
 

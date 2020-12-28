@@ -51,7 +51,7 @@ namespace WindowsScreenRecorder
         {
             var factory = WinrtModule.GetActivationFactory( "Windows.Graphics.Capture.GraphicsCaptureItem" );
             var interop = factory.AsInterface<IGraphicsCaptureItemInterop>();
-
+            
             var graphicsCaptureItemGuid = new Guid( "79C3F95B-31F7-4EC2-A464-632EF5D30760" );
             var hr = interop.CreateForMonitor( hmon, ref graphicsCaptureItemGuid, out var result );
 

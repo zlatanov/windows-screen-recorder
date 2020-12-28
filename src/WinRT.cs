@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using WinRT;
 
@@ -38,19 +41,30 @@ namespace WindowsScreenRecorder
 
     internal static class WinrtModule
     {
+        private static readonly Dictionary<string, ObjectReference<IActivationFactoryVftbl>> Cache = new Dictionary<string, ObjectReference<IActivationFactoryVftbl>>();
+
         public static ObjectReference<IActivationFactoryVftbl> GetActivationFactory( string runtimeClassId )
         {
-            var m = MarshalString.CreateMarshaler( runtimeClassId );
-            
-            try
+            lock ( Cache )
             {
-                var instancePtr = GetActivationFactory( MarshalString.GetAbi( m ) );
+                if ( Cache.TryGetValue( runtimeClassId, out var factory ) )
+                    return factory;
 
-                return ObjectReference<IActivationFactoryVftbl>.Attach( ref instancePtr );
-            }
-            finally
-            {
-                m.Dispose();
+                var m = MarshalString.CreateMarshaler( runtimeClassId );
+
+                try
+                {
+                    var instancePtr = GetActivationFactory( MarshalString.GetAbi( m ) );
+
+                    factory = ObjectReference<IActivationFactoryVftbl>.Attach( ref instancePtr );
+                    Cache.Add( runtimeClassId, factory );
+
+                    return factory;
+                }
+                finally
+                {
+                    m.Dispose();
+                }
             }
         }
 
@@ -80,6 +94,15 @@ namespace WindowsScreenRecorder
             throw new Win32Exception( hr );
         }
 
+        public static bool ResurrectObjectReference( IObjectReference objRef )
+        {
+            var disposedField = objRef.GetType().GetField( "disposed", BindingFlags.NonPublic | BindingFlags.Instance );
+            if ( !(bool)disposedField.GetValue( objRef ) )
+                return false;
+            disposedField.SetValue( objRef, false );
+            GC.ReRegisterForFinalize( objRef );
+            return true;
+        }
 
         private static IntPtr s_cookie;
         private static readonly object s_lock = new object();

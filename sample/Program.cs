@@ -6,7 +6,7 @@ namespace WindowsScreenRecorder
 {
     public class Program
     {
-        static async Task Main()
+        static void Main()
         {
             var fileName = Path.Combine( Environment.CurrentDirectory, "recording.mp4" );
 
