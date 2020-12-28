@@ -12,7 +12,7 @@ namespace WindowsScreenRecorder
 
             {
                 using var stream = File.Create( fileName );
-                await using var recorder = await ScreenRecorder.CreateAsync( stream );
+                using var recorder = ScreenRecorder.Create( stream );
 
                 Console.WriteLine( $"Recording in {fileName}." );
                 Console.Write( "Press any key to stop." );

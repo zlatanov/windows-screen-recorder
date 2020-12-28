@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX.Direct3D11;
@@ -10,9 +12,9 @@ using Windows.Media.Transcoding;
 
 namespace WindowsScreenRecorder
 {
-    public sealed class ScreenRecorder : IAsyncDisposable
+    public sealed class ScreenRecorder : IDisposable
     {
-        public static async Task<ScreenRecorder> CreateAsync( Stream output, ScreenRecorderOptions? options = null )
+        public static ScreenRecorder Create( Stream output, ScreenRecorderOptions? options = null )
         {
             options ??= ScreenRecorderOptions.Default;
             var device = Direct3D11Helpers.CreateDevice();
@@ -37,18 +39,28 @@ namespace WindowsScreenRecorder
                 };
 
                 var encodingProfile = MediaEncodingProfile.CreateMp4( options.Quality );
-                var transcode = await transcoder.PrepareMediaStreamSourceTranscodeAsync( source, output.AsRandomAccessStream(), encodingProfile );
+                var prepareTranscodeOperation = transcoder.PrepareMediaStreamSourceTranscodeAsync( source, output.AsRandomAccessStream(), encodingProfile );
 
-                transcode.TranscodeAsync().Completed = ( progress, __ ) =>
+                if ( prepareTranscodeOperation.Status == Windows.Foundation.AsyncStatus.Started )
+                {
+                    using var waitHandle = new ManualResetEvent( false );
+                    prepareTranscodeOperation.Completed = ( _, __ ) => waitHandle.Set();
+                    waitHandle.WaitOne();
+                }
+
+                prepareTranscodeOperation.GetResults().TranscodeAsync().Completed = ( progress, __ ) =>
                 {
                     try
                     {
                         progress.GetResults();
-                        recorder.m_stopped.SetResult();
                     }
                     catch ( Exception ex )
                     {
-                        recorder.m_stopped.SetException( ex );
+                        recorder.m_exception = ExceptionDispatchInfo.Capture( ex );
+                    }
+                    finally
+                    {
+                        recorder.m_stopped.Set();
                     }
                 };
 
@@ -70,7 +82,7 @@ namespace WindowsScreenRecorder
             source.SampleRequested += OnSampleRequested;
         }
 
-        public async ValueTask DisposeAsync()
+        public void Dispose()
         {
             if ( m_disposed )
                 return;
@@ -82,7 +94,11 @@ namespace WindowsScreenRecorder
 
             try
             {
-                await m_stopped.Task;
+                if ( !m_stopped.WaitOne( millisecondsTimeout: 30_000 ) )
+                    throw new InvalidProgramException( "The recorder failed to stop in allotted time." );
+
+                m_stopped.Dispose();
+                m_exception?.Throw();
             }
             finally
             {
@@ -104,6 +120,8 @@ namespace WindowsScreenRecorder
         private readonly MediaSampleGenerator m_generator;
 
         private bool m_disposed;
-        private readonly TaskCompletionSource m_stopped = new TaskCompletionSource();
+        private ExceptionDispatchInfo? m_exception;
+
+        private readonly ManualResetEvent m_stopped = new ManualResetEvent( false );
     }
 }
