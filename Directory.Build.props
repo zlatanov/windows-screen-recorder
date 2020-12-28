@@ -3,7 +3,7 @@
         <LangVersion>latest</LangVersion>
         <Features>strict</Features>
         <Deterministic>true</Deterministic>
-        <Version>0.1</Version>
+        <Version>0.1.1</Version>
 
         <Authors>Ivan Zlatanov</Authors>
         <PackageVersion>$(Version)-beta</PackageVersion>
