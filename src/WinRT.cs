@@ -21,8 +21,10 @@ namespace WindowsScreenRecorder
     [Guid( "00000035-0000-0000-C000-000000000046" )]
     internal unsafe struct IActivationFactoryVftbl
     {
+#pragma warning disable CS0649 // Field is never assigned to, and will always have its default value
         public readonly IInspectable.Vftbl IInspectableVftbl;
         private readonly void* _ActivateInstance;
+#pragma warning restore
 
         public delegate* unmanaged[Stdcall]< IntPtr, IntPtr*, int > ActivateInstance => (delegate* unmanaged[Stdcall]< IntPtr, IntPtr*, int >)_ActivateInstance;
     }
@@ -96,8 +98,8 @@ namespace WindowsScreenRecorder
 
         public static bool ResurrectObjectReference( IObjectReference objRef )
         {
-            var disposedField = objRef.GetType().GetField( "disposed", BindingFlags.NonPublic | BindingFlags.Instance );
-            if ( !(bool)disposedField.GetValue( objRef ) )
+            var disposedField = objRef.GetType().GetField( "disposed", BindingFlags.NonPublic | BindingFlags.Instance )!;
+            if ( !(bool)disposedField.GetValue( objRef )! )
                 return false;
             disposedField.SetValue( objRef, false );
             GC.ReRegisterForFinalize( objRef );
