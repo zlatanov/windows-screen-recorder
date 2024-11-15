@@ -1,0 +1,4 @@
+GetMonitorInfoW
+EnumDisplayMonitors
+
+MONITORINFOEXW

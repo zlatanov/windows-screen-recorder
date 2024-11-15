@@ -1,31 +1,40 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.Marshalling;
 using Windows.Graphics.Capture;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Gdi;
 
 namespace WindowsScreenRecorder
 {
-    internal static class Monitor
+    internal static partial class Monitor
     {
-        public static GraphicsCaptureItem CreateCaptureItem( string? deviceName )
+        public static unsafe GraphicsCaptureItem CreateCaptureItem( string? deviceName )
         {
             GraphicsCaptureItem? result = null;
-            var info = new MonitorInfoEx
+            var info = new MONITORINFOEXW
             {
-                Size = 104
+                monitorInfo =
+                {
+                    cbSize = (uint)sizeof( MONITORINFOEXW ),
+                },
+                szDevice = default
             };
 
-            bool Callback( IntPtr hMonitor, IntPtr hdcMonitor, ref Rect lprcMonitor, IntPtr dwData )
+            unsafe BOOL Callback( HMONITOR hMonitor, HDC param1, RECT* param2, LPARAM param3 )
             {
-                if ( !GetMonitorInfoW( hMonitor, ref info ) )
+                if ( !PInvoke.GetMonitorInfo( hMonitor, ref Unsafe.AsRef<MONITORINFO>( Unsafe.AsPointer( ref info ) ) ) )
                     throw new Win32Exception();
 
-                if ( deviceName is null && info.Flags.HasFlag( MonitorFlags.Primary ) )
+                if ( deviceName is null && ( info.monitorInfo.dwFlags & 0x00000001 ) == 0x00000001 )
                 {
                     result = CreateItemForMonitor( hMonitor );
                     return false;
                 }
-                else if ( deviceName is not null && deviceName == info.DeviceName )
+                else if ( deviceName is not null && info.szDevice.AsReadOnlySpan().StartsWith( deviceName, StringComparison.Ordinal ) )
                 {
                     result = CreateItemForMonitor( hMonitor );
                     return false;
@@ -34,7 +43,7 @@ namespace WindowsScreenRecorder
                 return true;
             }
 
-            EnumDisplayMonitors( IntPtr.Zero, IntPtr.Zero, Callback, IntPtr.Zero );
+            PInvoke.EnumDisplayMonitors( default, new RECT?(), new MONITORENUMPROC( Callback ), default );
 
             if ( result is null )
             {
@@ -47,53 +56,25 @@ namespace WindowsScreenRecorder
             return result;
         }
 
-        private static GraphicsCaptureItem CreateItemForMonitor( IntPtr hmon )
+        private static GraphicsCaptureItem CreateItemForMonitor( nint hmon )
         {
-            var factory = WinrtModule.GetActivationFactory( "Windows.Graphics.Capture.GraphicsCaptureItem" );
-            var interop = factory.AsInterface<IGraphicsCaptureItemInterop>();
-            
-            var graphicsCaptureItemGuid = new Guid( "79C3F95B-31F7-4EC2-A464-632EF5D30760" );
-            var hr = interop.CreateForMonitor( hmon, ref graphicsCaptureItemGuid, out var result );
+            var iid = new Guid( "79C3F95B-31F7-4EC2-A464-632EF5D30760" );
+            var hr = GraphicsCaptureItem.As<IGraphicsCaptureItemInterop>().CreateForMonitor( hmon, ref iid, out var result );
 
-            if ( hr != 0 )
+            if ( hr > 0 )
                 throw new Win32Exception( hr );
 
             return GraphicsCaptureItem.FromAbi( result );
         }
+    }
 
-        delegate bool EnumMonitorsDelegate( IntPtr hMonitor, IntPtr hdcMonitor, ref Rect lprcMonitor, IntPtr dwData );
+    [GeneratedComInterface]
+    [Guid( "3628E81B-3CAC-4C60-B7F4-23CE0E0C3356" )]
+    [InterfaceType( ComInterfaceType.InterfaceIsIUnknown )]
+    internal partial interface IGraphicsCaptureItemInterop
+    {
+        int CreateForWindow( IntPtr window, ref Guid iid, out IntPtr result );
 
-        [DllImport( "user32.dll" )]
-        static extern bool EnumDisplayMonitors( IntPtr hdc, IntPtr lprcClip, EnumMonitorsDelegate callback, IntPtr dwData );
-
-        [DllImport( "user32.dll", ExactSpelling = true, SetLastError = true )]
-        static extern bool GetMonitorInfoW( IntPtr hMonitor, ref MonitorInfoEx lpmi );
-
-        [StructLayout( LayoutKind.Sequential )]
-        private struct Rect
-        {
-            public int Left;
-            public int Top;
-            public int Right;
-            public int Bottom;
-        }
-
-        [Flags]
-        public enum MonitorFlags : uint
-        {
-            Primary = 0x00000001
-        }
-
-        [StructLayout( LayoutKind.Sequential, CharSet = CharSet.Unicode )]
-        private unsafe struct MonitorInfoEx
-        {
-            public uint Size;
-            public Rect Monitor;
-            public Rect Work;
-            public MonitorFlags Flags;
-
-            [MarshalAs( UnmanagedType.ByValTStr, SizeConst = 32 )]
-            public string DeviceName;
-        }
+        int CreateForMonitor( IntPtr monitor, ref Guid iid, out IntPtr result );
     }
 }

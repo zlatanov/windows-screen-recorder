@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Threading;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
@@ -7,7 +8,7 @@ using Windows.Media.Core;
 
 namespace WindowsScreenRecorder
 {
-    internal sealed class MediaSampleGenerator : IDisposable
+    internal sealed partial class MediaSampleGenerator : IDisposable
     {
         public MediaSampleGenerator( IDirect3DDevice device, GraphicsCaptureItem item )
         {
@@ -154,7 +155,7 @@ namespace WindowsScreenRecorder
             }
         }
 
-        private readonly object m_lock = new object();
+        private readonly object m_lock = new();
         private State m_state = State.Created;
 
         private MediaStreamSourceStartingRequest? m_startRequest;
