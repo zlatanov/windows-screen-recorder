@@ -2,7 +2,7 @@
 Screen recording library based on Windows.Graphics.Capture features in Windows 10. Uses .NET Core 5.0 to call into native Windows UWP APIs.
 
 ## How to use
-Install the latest version of WindowsScreenRecorder from NuGet (currently in preview).
+Install the latest version of **WindowsScreenRecorder** from NuGet.
 ```c#
 // Use any stream abstraction, in this example we're saving into file.
 using var stream = File.Create( Path.Combine( Environment.CurrentDirectory, "recording.mp4" ) );
