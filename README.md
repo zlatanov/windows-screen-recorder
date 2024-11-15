@@ -6,7 +6,7 @@ Install the latest version of WindowsScreenRecorder from NuGet (currently in pre
 ```c#
 // Use any stream abstraction, in this example we're saving into file.
 using var stream = File.Create( Path.Combine( Environment.CurrentDirectory, "recording.mp4" ) );
-using var recorder = ScreenRecorder.Create( stream, new ScreenRecorderOptions
+await using var recorder = await ScreenRecorder.CreateAsync( stream, new ScreenRecorderOptions
 {
     HardwareAccelerationEnabled = true,
     MonitorDeviceName = null, // Primary
