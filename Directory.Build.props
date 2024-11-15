@@ -3,6 +3,7 @@
         <LangVersion>latest</LangVersion>
         <Features>strict</Features>
         <Deterministic>true</Deterministic>
+        <PathMap Condition="$(Configuration) == 'Release'">$(MSBuildThisFileDirectory)=c:\code\</PathMap>
         <Version>0.3.0</Version>
 
         <Authors>Ivan Zlatanov</Authors>
@@ -16,9 +17,6 @@
         <DebugType>embedded</DebugType>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
         <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     </PropertyGroup>
 </Project>
